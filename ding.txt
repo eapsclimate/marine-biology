@@ -1,0 +1,82 @@
+no3_tmp=fltarr(4096, 2048) & sst_tmp=fltarr(4096, 2048) & chla_tmp=fltarr(4096, 2048)
+sst=bytarr(4096, 2048) & chla=bytarr(4096, 2048) & no3=bytarr(4096, 2048)
+
+file_t=['SST961101MDTV4.HDF']
+
+file_c=['OCC961101MDTV4.HDF']
+
+file_n=['NO3961101MDTV4.HDF']
+
+close, 1 & close, 2 & close, 3
+
+for nn=0, 0 do begin
+openr, 1, file_t[nn]
+openr, 2, file_c[nn]
+openw, 3, file_n[nn]
+
+
+close, 1 & close, 2 & close, 3
+
+for nn=0, 0 do begin
+openr, 1, file_t[nn]
+openr, 2, file_c[nn]
+openw, 3, file_n[nn]
+
+readu, 1, sst
+readu, 2, chla
+
+print, min(sst), '< sst < ', max(sst)
+print, min(chla), '< chla < ', max(chla)
+
+close, 1
+close, 2
+
+chla_true = 0.0 & sst_true =0.0
+ for i=0, 4095 do begin
+    for j=0, 2047 do begin
+
+        chla_true=10.0^(0.015*float(chla[i,j])-2.0)
+        sst_true =0.15*float(sst[i,j])-2.1
+
+        chla_tmp[i,j]=chla_true
+        sst_tmp[i,j] =sst_true
+
+        if sst_true ge 26 and chla_true ge 0.2 then begin
+           no3_true = 354.47 - 23.70 * sst_true + 0.40 * sst_true ^ 2 $
+                      + 3.9 * chla_true
+
+        endif else begin
+           no3_true = 25.68 - 1.97 * sst_true +0.04 * sst_true ^ 2 $
+                      - 1.63 * chla_true + 0.012 * chla_true ^ 2
+        endelse
+
+	if no3_true lt 0.0 then no3_true=0.0
+
+        no3_tmp[i,j] = no3_true
+    endfor
+endfor
+
+print, min(sst_tmp), '< converted sst < ', max(sst_tmp)
+print, min(chla_tmp), '< converted chla < ', max(chla_tmp)
+
+no3_max=max(no3_tmp)& no3_min=min(no3_tmp)
+print, min(no3_tmp), '< converted no3 < ', max(no3_tmp)
+
+
+
+for i = 0, 4095 do begin
+   for j = 0, 2047 do begin
+
+	 no3tt = 255.0 * (no3_tmp[i,j])/35
+         no3[i,j]=byte(no3tt)
+
+    endfor
+endfor
+
+writeu, 3, no3
+
+close, 3
+
+endfor
+
+end
