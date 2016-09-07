@@ -1,0 +1,114 @@
+;+
+; NAME:
+; NO3_BASINS_NO3
+;
+; PURPOSE:
+; Use this function to transform sst ands chl data into no3 data using the 
+; three geophysical basins and temperature cutoffs as follows...
+;
+; PACIFIC (basin = 0)
+;   Use PEQ where (SST GT 20) AND (CHL GT 0.1) ELSE use NEQ
+; ATLANTIC (basin = 1)
+;   Use AEQ where (SST GT 20) AND (CHL GT 0.1) ELSE use NEQ
+; INDIAN (basin = 2)
+;   Use IEQ where (SST GT 20) AND (CHL GT 0.1) ELSE use NEQ
+;
+; The three letters codes (PEQ, AEQ, IEQ and NEQ) all identify the coefficients.
+; 
+; CALLING SEQUENCE:
+; result = NO3_BASINS_NO3(sst, chl, [COUNT = variable], [MASK = array], $
+;   [OFILE = string])
+; 
+; RETURNED:
+; A GG_*_SDS data structure of the NO3 result.
+;
+; ARGUMENTS:
+; SST and CHL  GG_*_SDS data structure or filenames to such structures.
+; 
+; KEYWORDS:
+; COUNT Set this to a named variable to retrieve the number of objects returned.
+; OFILE Set his to a fully qualified output path to automatically save the 
+;   result to file.
+; MASK  Set this to a 2d mask to use.  If not provided then one is read from disk.
+;
+; MODIFICATION HISTORY:
+; 2008-12-20 BT written for IDL 6.3
+;-
+FUNCTION NO3_BASINS_NO3, sst, chl, $
+  MASK = mask, COUNT = count, OFILE = ofile, $
+  APPLY_WEIGHT = apply_weight, $
+  WSST = WSST, $
+  WCHL = wchl, $
+  VERBOSE = verbose
+  
+  verbose = KEYWORD_SET(verbose)
+  weight  = KEYWORD_SET(apply_weight)
+  if n_elements(wsst) EQ 0 then $
+    wsst = gg_transform_no3_coeffs("sst", /logistic)
+  if n_elements(wchl) EQ 0 then $
+    wchl = gg_transform_no3_coeffs("chl", /logistic)
+  peq = [wsst[0], wchl[0]] ;lower bounds for [sst, chl] in pacific
+  aeq = [wsst[0], wchl[0]] ;in atlantic
+  ieq = [wsst[0], wchl[0]] ;in indian
+  
+  if (verbose) then begin
+    MESSAGE, "Pacific thresholds [sst, chl] = ", peq, /CONT
+    MESSAGE, "Atlantic thresholds [sst, chl] = ", peq, /CONT
+    MESSAGE, "Indian thresholds [sst, chl] = ", peq, /CONT
+  endif
+    
+  if n_elements(mask) EQ 0 then mask = NO3_BASINS_MASK(sst.size[1:2])
+  
+  no3 = GG_TEMPLATE_SDS(data = sst[0], units = "ug/L")
+  if n_elements(ofile) NE 0 then no3.file = ofile[0] else no3.file = ""
+  
+  h = HISTOGRAM(mask, REVERSE_INDICES = r)
+  
+  no3.data = GG_TRANSFORMPIXELS_NO3(sst.data, chl.data, "NEQ")
+  
+  ;pacific
+  ix = HIST_INDEX(r,0, COUNT = nix)
+  if nix GT 0 then begin
+    if weight then begin
+      no3.data[ix] = $
+        GG_TRANSFORMPIXELS_NO3(sst.data[ix], chl.data[ix], "PEQ",$
+          WSST = wsst, WCHL = wchl,  APPLY_WEIGHT = weight)
+    endif else begin 
+      A = where((sst.data[ix] GT peq[0]) AND (chl.data[ix] GT peq[1]), na)
+      if na GT 0 then no3.data[ix[a]] = $
+        GG_TRANSFORMPIXELS_NO3(sst.data[ix[a]], chl.data[ix[a]], "PEQ")
+    endelse
+  endif
+  
+  ;atlantic
+  ix = HIST_INDEX(r,1, COUNT = nix)
+  if nix GT 0 then begin
+    if weight then begin
+      no3.data[ix] = $
+        GG_TRANSFORMPIXELS_NO3(sst.data[ix], chl.data[ix], "AEQ", $
+          WSST = wsst, WCHL = wchl, APPLY_WEIGHT = weight)
+    endif else begin 
+      A = where((sst.data[ix] GT aeq[0]) AND (chl.data[ix] GT aeq[1]), na)
+      if na GT 0 then no3.data[ix[a]] = $
+       GG_TRANSFORMPIXELS_NO3(sst.data[ix[a]], chl.data[ix[a]], "AEQ")
+    ENDELSE
+  endif  
+  
+  ;indian
+  ix = HIST_INDEX(r,2, COUNT = nix)
+  if nix GT 0 then begin
+    if weight then begin
+      no3.data[ix] = $
+        GG_TRANSFORMPIXELS_NO3(sst.data[ix], chl.data[ix], "ARB", $
+          WSST = wsst, WCHL = wchl, APPLY_WEIGHT = weight)
+    endif else begin 
+      A = where((sst.data[ix] GT aeq[0]) AND (chl.data[ix] GT aeq[1]), na)
+      if na GT 0 then no3.data[ix[a]] = $
+        GG_TRANSFORMPIXELS_NO3(sst.data[ix[a]], chl.data[ix[a]], "ARB")
+    endelse
+  endif   
+  
+  if n_elements(ofile) NE 0 then GG_WRITE_SDS, no3
+  return, no3
+END
+  
